@@ -1,0 +1,241 @@
+/* Basic Layout */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.app-container {
+  min-height: 100vh;
+}
+
+/* Navigation Menu */
+.main-nav {
+  background-color: #333;
+  color: white;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.nav-links {
+  list-style: none;
+  display: flex;
+  gap: 20px;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-links a {
+  color: white;
+  text-decoration: none;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.material-symbols-outlined {
+  font-size: 20px;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+.nav-links a.active {
+  background-color: #555;
+  border-radius: 4px;
+}
+
+/* Page Content */
+.content {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.page-container {
+  background-color: white;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+/* StreamList Form */
+.input-group {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.streamlist-input {
+  padding: 8px;
+  width: 250px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.add-button {
+  padding: 8px 16px;
+  margin-left: 10px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.add-button:hover {
+  background-color: #0056b3;
+}
+
+/* Search Bar */
+.search-group {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.search-container {
+  position: relative;
+  display: inline-block;
+}
+
+.search-input {
+  padding: 8px 8px 8px 35px;
+  width: 250px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888;
+  pointer-events: none;
+}
+
+.movie-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.movie-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.add-to-watchlist-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.add-to-watchlist-btn:hover {
+  color: #0056b3;
+}
+
+.in-watchlist-label {
+  color: #28a745;
+  display: flex;
+  align-items: center;
+}
+
+/* Mobile Friendly */
+@media (max-width: 600px) {
+  .main-nav {
+    flex-direction: column;
+    text-align: center;
+    padding: 10px;
+  }
+  .nav-logo {
+    margin-bottom: 10px;
+    font-size: 20px;
+  }
+  .nav-links {
+    width: 100%;
+    justify-content: space-around;
+    gap: 10px;
+  }
+  .nav-links a {
+    flex-direction: column;
+    font-size: 12px;
+    padding: 5px;
+    gap: 2px;
+  }
+  .material-symbols-outlined {
+    font-size: 24px;
+  }
+  .streamlist-input {
+    width: 100%;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+  }
+  .add-button {
+    margin-left: 0;
+    width: 100%;
+  }
+  .content {
+    padding: 10px;
+  }
+  .page-container {
+    padding: 15px;
+  }
+}
+
+/* Extra Small Screens */
+@media (max-width: 320px) {
+  .nav-links {
+    gap: 5px;
+  }
+  .nav-links a {
+    padding: 2px;
+  }
+}
+
+.remove-movie-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.remove-movie-btn:hover {
+  color: #a71d2a;
+}
