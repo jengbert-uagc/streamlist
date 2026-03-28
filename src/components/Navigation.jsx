@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 
-function Navigation() {
+function Navigation({ currentUser }) {
   return (
     <nav className="main-nav">
       <div className="nav-logo">StreamList</div>
@@ -28,6 +28,12 @@ function Navigation() {
           <NavLink to="/about" className={({ isActive }) => isActive ? 'active' : ''}>
             <span className="material-symbols-outlined">info</span>
             About
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to={currentUser ? '/profile' : '/login'} className={({ isActive }) => isActive ? 'active' : ''}>
+            <span className="material-symbols-outlined">{currentUser ? 'account_circle' : 'login'}</span>
+            {currentUser ? 'Profile' : 'Login'}
           </NavLink>
         </li>
       </ul>

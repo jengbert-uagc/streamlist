@@ -338,3 +338,40 @@ h2 {
 .remove-movie-btn:hover {
   color: #a71d2a;
 }
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.auth-input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.auth-submit {
+  margin-left: 0;
+  margin-top: 6px;
+  width: fit-content;
+}
+
+.auth-error {
+  color: #a71d2a;
+  margin: 0;
+}
+
+.auth-success {
+  color: #1f7a35;
+  margin: 0;
+}
+
+.logout-button {
+  margin-top: 18px;
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
