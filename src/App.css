@@ -28,6 +28,7 @@ body {
 .nav-links {
   list-style: none;
   display: flex;
+  flex-wrap: wrap;
   gap: 20px;
   padding: 0;
   margin: 0;
@@ -40,6 +41,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .material-symbols-outlined {
@@ -107,6 +110,85 @@ h2 {
 
 .add-button:hover {
   background-color: #0056b3;
+}
+
+.list-header {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  color: #666;
+  font-size: 14px;
+}
+
+.empty-state {
+  margin-top: 14px;
+  color: #666;
+}
+
+.stream-items {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+.stream-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.item-text {
+  text-align: left;
+  word-break: break-word;
+}
+
+.stream-item.is-complete .item-text {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-button {
+  border: 1px solid #ddd;
+  background-color: #fff;
+  border-radius: 6px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  color: #333;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background-color: #f7f7f7;
+}
+
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon-button.danger {
+  color: #dc3545;
+}
+
+.edit-input {
+  width: 100%;
+  max-width: 400px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
 /* Search Bar */
@@ -187,7 +269,8 @@ h2 {
   }
   .nav-links {
     width: 100%;
-    justify-content: space-around;
+    justify-content: center;
+    flex-wrap: wrap;
     gap: 10px;
   }
   .nav-links a {
@@ -213,6 +296,22 @@ h2 {
   }
   .page-container {
     padding: 15px;
+  }
+  .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .stream-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .item-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .edit-input {
+    max-width: 100%;
   }
 }
 
