@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -20,20 +19,8 @@ const DEFAULT_USERS = [
   }
 ];
 
-const hashPassword = (password, salt) => {
-  return createHash('sha512').update(password + salt).digest('hex');
-};
-
 const verifyPassword = async (user, password) => {
-  if (typeof user.passwordHash === 'string') {
-    return bcrypt.compare(password, user.passwordHash);
-  }
-
-  if (typeof user.salt === 'string' && typeof user.hash === 'string') {
-    return hashPassword(password, user.salt) === user.hash;
-  }
-
-  return false;
+  return typeof user.passwordHash === 'string' && bcrypt.compare(password, user.passwordHash);
 };
 
 const toBcryptUser = async (user, password) => {
@@ -101,8 +88,7 @@ const server = createServer(async (req, res) => {
       }
 
       const users = await getUsers();
-      const userIndex = users.findIndex((storedUser) => storedUser.username === username);
-      const user = users[userIndex];
+      const user = users.find((storedUser) => storedUser.username === username);
       if (!user) {
         sendJson(res, 401, { error: 'Invalid username or password' });
         return;
@@ -112,11 +98,6 @@ const server = createServer(async (req, res) => {
       if (!isValidPassword) {
         sendJson(res, 401, { error: 'Invalid username or password' });
         return;
-      }
-
-      if (!user.passwordHash) {
-        users[userIndex] = await toBcryptUser(user, password);
-        await saveUsers(users);
       }
 
       sendJson(res, 200, { username: user.username });
