@@ -13,7 +13,13 @@ function Navigation({ currentUser }) {
           </NavLink>
         </li>
         <li>
-          <NavLink to="/movies" className={({ isActive }) => isActive ? 'active' : ''}>
+          <NavLink to="/find" className={({ isActive }) => isActive ? 'active' : ''}>
+            <span className="material-symbols-outlined">search</span>
+            Find
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/movie" className={({ isActive }) => isActive ? 'active' : ''}>
             <span className="material-symbols-outlined">movie</span>
             Movies
           </NavLink>
