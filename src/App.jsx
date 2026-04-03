@@ -32,7 +32,10 @@ function ProtectedRoute({ currentUser, children }) {
 
 function LoginRoute({ currentUser, onLogin }) {
   const location = useLocation();
-  const redirectTo = location.state?.from?.pathname || '/profile';
+  const fromLocation = location.state?.from;
+  const redirectTo = fromLocation
+    ? `${fromLocation.pathname || '/'}${fromLocation.search || ''}${fromLocation.hash || ''}`
+    : '/';
   if (currentUser) {
     return <Navigate to={redirectTo} replace />;
   }
