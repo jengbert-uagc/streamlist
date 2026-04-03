@@ -1,7 +1,6 @@
 [
   {
     "username": "admin",
-    "salt": "34b95ab2bf526e65131e4448",
-    "hash": "a5b434ca157a474a789ad370f523e8cd8538cf2af31fb52130a930e09989787393ebde0419016718536b16f42db238f83e399a1ffef6e041f34304e9902cd42f"
+    "passwordHash": "$2b$12$DTcZPskWZ92tSh6gyQnbV.u5vPOT74qHTCRtXkddVj9cRimQqHx.e"
   }
 ]
