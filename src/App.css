@@ -98,6 +98,47 @@ h2 {
   box-sizing: border-box;
 }
 
+.streamlist-input-wrap {
+  position: relative;
+  width: 250px;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background-color: #fff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.autocomplete-item {
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #222;
+}
+
+.autocomplete-item:hover {
+  background-color: #f4f8ff;
+}
+
+.autocomplete-item.muted {
+  color: #666;
+  cursor: default;
+}
+
 .add-button {
   padding: 8px 16px;
   margin-left: 10px;
@@ -287,6 +328,9 @@ h2 {
     margin-bottom: 10px;
     box-sizing: border-box;
   }
+  .streamlist-input-wrap {
+    width: 100%;
+  }
   .add-button {
     margin-left: 0;
     width: 100%;
@@ -296,6 +340,9 @@ h2 {
   }
   .page-container {
     padding: 15px;
+  }
+  .find-form {
+    flex-direction: column;
   }
   .list-header {
     flex-direction: column;
@@ -374,4 +421,70 @@ h2 {
   border: 1px solid #ddd;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.find-form {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.find-input {
+  width: 100%;
+  max-width: 450px;
+}
+
+.find-results-title {
+  margin-top: 20px;
+  color: #666;
+}
+
+.find-results {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: grid;
+  gap: 12px;
+}
+
+.find-card {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.find-card h3 {
+  margin: 0 0 8px;
+}
+
+.find-meta {
+  margin: 0 0 8px;
+  color: #666;
+  font-size: 14px;
+}
+
+.find-overview {
+  text-align: left;
+}
+
+.add-result-button {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid #007bff;
+  background-color: #fff;
+  color: #007bff;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.add-result-button:hover {
+  background-color: #e7f1ff;
+}
+
+.add-result-button:disabled {
+  border-color: #bbb;
+  color: #777;
+  background-color: #f5f5f5;
+  cursor: not-allowed;
 }

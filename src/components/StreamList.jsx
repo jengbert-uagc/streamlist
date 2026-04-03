@@ -1,10 +1,62 @@
 import React, { useState } from 'react';
 
-function StreamList() {
+const TMDB_API_URL = import.meta.env.VITE_TMDB_API_URL || 'https://api.themoviedb.org/3';
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+
+function StreamList({ items, setItems }) {
   const [inputValue, setInputValue] = useState('');
-  const [items, setItems] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+
+  React.useEffect(() => {
+    const query = inputValue.trim();
+    if (!TMDB_API_KEY || query.length < 2) {
+      setSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const response = await fetch(
+          `${TMDB_API_URL}/search/movie?api_key=${encodeURIComponent(TMDB_API_KEY)}&query=${encodeURIComponent(query)}&include_adult=false&page=1`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) {
+          setSuggestions([]);
+          return;
+        }
+
+        const payload = await response.json();
+        const nextSuggestions = (payload.results || []).slice(0, 8).map((movie) => {
+          const year = movie.release_date?.slice(0, 4);
+          return {
+            id: movie.id,
+            label: year ? `${movie.title} (${year})` : movie.title,
+          };
+        });
+        setSuggestions(nextSuggestions);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [inputValue]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -64,6 +116,11 @@ function StreamList() {
     setEditValue('');
   };
 
+  const handleSuggestionSelect = (label) => {
+    setInputValue(label);
+    setShowSuggestions(false);
+  };
+
   const totalItems = items.length;
   const completedItems = items.filter((item) => item.completed).length;
 
@@ -72,13 +129,40 @@ function StreamList() {
       <h2>StreamList</h2>
       <p>Add streaming services, then edit, complete, or remove them below.</p>
       <form onSubmit={handleSubmit} className="input-group">
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Enter service name..."
-          className="streamlist-input"
-        />
+        <div className="streamlist-input-wrap">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => {
+              setTimeout(() => setShowSuggestions(false), 120);
+            }}
+            placeholder="Enter movie name"
+            className="streamlist-input"
+          />
+          {showSuggestions && (suggestions.length > 0 || isSearching) ? (
+            <ul className="autocomplete-list">
+              {isSearching ? <li className="autocomplete-item muted">Searching...</li> : null}
+              {!isSearching
+                ? suggestions.map((suggestion) => (
+                  <li key={suggestion.id}>
+                    <button
+                      type="button"
+                      className="autocomplete-item"
+                      onClick={() => handleSuggestionSelect(suggestion.label)}
+                    >
+                      {suggestion.label}
+                    </button>
+                  </li>
+                ))
+                : null}
+            </ul>
+          ) : null}
+        </div>
         <button type="submit" className="add-button">Submit</button>
       </form>
 
