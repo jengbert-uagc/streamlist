@@ -430,9 +430,14 @@ h2 {
   gap: 10px;
 }
 
-.find-input {
+.find-input-wrap {
+  position: relative;
   width: 100%;
   max-width: 450px;
+}
+
+.find-input {
+  width: 100%;
 }
 
 .find-results-title {
