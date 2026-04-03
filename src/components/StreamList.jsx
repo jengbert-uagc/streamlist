@@ -58,21 +58,38 @@ function StreamList({ items, setItems }) {
     };
   }, [inputValue]);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const trimmedValue = inputValue.trim();
+  const addStreamItem = (text) => {
+    const trimmedValue = text.trim();
     if (!trimmedValue) {
       return;
     }
 
-    const newItem = {
-      id: Date.now(),
-      text: trimmedValue,
-      completed: false,
-    };
+    setItems((prevItems) => {
+      const alreadyExists = prevItems.some(
+        (item) => item.text.toLowerCase() === trimmedValue.toLowerCase(),
+      );
 
-    setItems((prevItems) => [newItem, ...prevItems]);
+      if (alreadyExists) {
+        return prevItems;
+      }
+
+      return [
+        {
+          id: Date.now(),
+          text: trimmedValue,
+          completed: false,
+        },
+        ...prevItems,
+      ];
+    });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    addStreamItem(inputValue);
     setInputValue('');
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const toggleComplete = (id) => {
@@ -117,7 +134,9 @@ function StreamList({ items, setItems }) {
   };
 
   const handleSuggestionSelect = (label) => {
-    setInputValue(label);
+    addStreamItem(label);
+    setInputValue('');
+    setSuggestions([]);
     setShowSuggestions(false);
   };
 
@@ -153,6 +172,7 @@ function StreamList({ items, setItems }) {
                     <button
                       type="button"
                       className="autocomplete-item"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSuggestionSelect(suggestion.label)}
                     >
                       {suggestion.label}

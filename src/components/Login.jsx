@@ -10,7 +10,10 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const redirectTo = location.state?.from?.pathname || '/profile';
+  const fromLocation = location.state?.from;
+  const redirectTo = fromLocation
+    ? `${fromLocation.pathname || '/'}${fromLocation.search || ''}${fromLocation.hash || ''}`
+    : '/';
 
   const handleSubmit = async (event) => {
     event.preventDefault();
