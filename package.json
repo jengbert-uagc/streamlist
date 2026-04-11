@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node server/index.js",
+    "dev:full": "node scripts/dev-full.js",
     "build": "vite build",
+    "test": "node --test",
     "lint": "eslint .",
     "preview": "vite preview"
   },

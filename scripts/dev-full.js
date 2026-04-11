@@ -6,23 +6,39 @@ const run = (name, command, args) => {
     shell: true
   });
 
-  child.on('exit', (code) => {
-    if (code !== 0) {
-      console.error(`${name} exited with code ${code}`);
-    }
-  });
-
   return child;
 };
 
 const server = run('server', 'npm', ['run', 'server']);
 const vite = run('vite', 'npm', ['run', 'dev']);
+let shuttingDown = false;
 
-const shutdown = () => {
+const shutdown = (exitCode = 0) => {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
   server.kill('SIGTERM');
   vite.kill('SIGTERM');
-  process.exit(0);
+  process.exit(exitCode);
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+const bindExit = (name, child) => {
+  child.on('exit', (code) => {
+    if (shuttingDown) {
+      return;
+    }
+    if (code === 0 || code === null) {
+      shutdown(0);
+      return;
+    }
+    console.error(`${name} exited with code ${code}`);
+    shutdown(code);
+  });
+};
+
+bindExit('server', server);
+bindExit('vite', vite);
+
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));

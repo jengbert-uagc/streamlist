@@ -8,10 +8,11 @@ import Cart from './components/Cart';
 import About from './components/About';
 import Login from './components/Login';
 import Profile from './components/Profile';
+import { currentUserRequest, logoutRequest } from './lib/authApi';
 import './App.css';
 
-const USER_STORAGE_KEY = 'streamlist-user';
 const ITEMS_STORAGE_KEY = 'streamlist-items';
+const CART_STORAGE_KEY = 'streamlist-cart';
 
 const loadItems = () => {
   try {
@@ -22,16 +23,31 @@ const loadItems = () => {
   }
 };
 
-function ProtectedRoute({ currentUser, children }) {
+const loadCart = () => {
+  try {
+    const storedCart = localStorage.getItem(CART_STORAGE_KEY);
+    return storedCart ? JSON.parse(storedCart) : [];
+  } catch {
+    return [];
+  }
+};
+
+function ProtectedRoute({ currentUser, authResolved, children }) {
   const location = useLocation();
+  if (!authResolved) {
+    return <p>Checking session...</p>;
+  }
   if (!currentUser) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
   return children;
 }
 
-function LoginRoute({ currentUser, onLogin }) {
+function LoginRoute({ currentUser, authResolved, onLogin }) {
   const location = useLocation();
+  if (!authResolved) {
+    return <p>Checking session...</p>;
+  }
   const fromLocation = location.state?.from;
   const redirectTo = fromLocation
     ? `${fromLocation.pathname || '/'}${fromLocation.search || ''}${fromLocation.hash || ''}`
@@ -43,21 +59,54 @@ function LoginRoute({ currentUser, onLogin }) {
 }
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(USER_STORAGE_KEY));
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [streamItems, setStreamItems] = useState(loadItems);
+  const [cartItems, setCartItems] = useState(loadCart);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadCurrentUser = async () => {
+      try {
+        const payload = await currentUserRequest();
+        if (isActive) {
+          setCurrentUser(payload.username || null);
+        }
+      } catch {
+        if (isActive) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (isActive) {
+          setAuthResolved(true);
+        }
+      }
+    };
+
+    void loadCurrentUser();
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(ITEMS_STORAGE_KEY, JSON.stringify(streamItems));
   }, [streamItems]);
 
+  useEffect(() => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+  }, [cartItems]);
+
   const handleLogin = (username) => {
-    localStorage.setItem(USER_STORAGE_KEY, username);
     setCurrentUser(username);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem(USER_STORAGE_KEY);
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    try {
+      await logoutRequest();
+    } finally {
+      setCurrentUser(null);
+    }
   };
 
   const handleAddMovieToStreamList = (movie) => {
@@ -93,23 +142,32 @@ function App() {
     });
   };
 
+  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+
   return (
     <Router>
       <div className="app-container">
-        <Navigation currentUser={currentUser} />
+        <Navigation currentUser={currentUser} cartItemCount={cartItemCount} />
         <main className="content">
           <Routes>
-            <Route path="/" element={<ProtectedRoute currentUser={currentUser}><StreamList items={streamItems} setItems={setStreamItems} /></ProtectedRoute>} />
-            <Route path="/find" element={<ProtectedRoute currentUser={currentUser}><Find streamItems={streamItems} onAddToStreamList={handleAddMovieToStreamList} /></ProtectedRoute>} />
-            <Route path="/movie" element={<ProtectedRoute currentUser={currentUser}><Movies /></ProtectedRoute>} />
-            <Route path="/movies" element={<ProtectedRoute currentUser={currentUser}><Movies /></ProtectedRoute>} />
-            <Route path="/cart" element={<ProtectedRoute currentUser={currentUser}><Cart /></ProtectedRoute>} />
-            <Route path="/about" element={<ProtectedRoute currentUser={currentUser}><About /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><StreamList items={streamItems} setItems={setStreamItems} /></ProtectedRoute>} />
+            <Route path="/find" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Find streamItems={streamItems} onAddToStreamList={handleAddMovieToStreamList} /></ProtectedRoute>} />
+            <Route path="/movie" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Movies /></ProtectedRoute>} />
+            <Route path="/movies" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Movies /></ProtectedRoute>} />
+            <Route
+              path="/cart"
+              element={
+                <ProtectedRoute currentUser={currentUser} authResolved={authResolved}>
+                  <Cart cartItems={cartItems} setCartItems={setCartItems} />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/about" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><About /></ProtectedRoute>} />
             <Route
               path="/login"
-              element={<LoginRoute currentUser={currentUser} onLogin={handleLogin} />}
+              element={<LoginRoute currentUser={currentUser} authResolved={authResolved} onLogin={handleLogin} />}
             />
-            <Route path="/profile" element={<ProtectedRoute currentUser={currentUser}><Profile currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Profile currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>} />
           </Routes>
         </main>
       </div>

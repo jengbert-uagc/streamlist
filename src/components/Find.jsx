@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 const TMDB_API_URL = import.meta.env.VITE_TMDB_API_URL || 'https://api.themoviedb.org/3';
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_IMAGE_BASE_URL = import.meta.env.VITE_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p';
 
 function Find({ streamItems, onAddToStreamList }) {
   const [query, setQuery] = useState('');
@@ -89,6 +90,7 @@ function Find({ streamItems, onAddToStreamList }) {
         overview: movie.overview,
         releaseDate: movie.release_date,
         rating: movie.vote_average,
+        posterUrl: movie.poster_path ? `${TMDB_IMAGE_BASE_URL}/w342${movie.poster_path}` : null,
       }));
 
       setMovies(nextMovies);
@@ -181,21 +183,35 @@ function Find({ streamItems, onAddToStreamList }) {
 
           return (
             <li key={movie.id} className="find-card">
-              <h3>{movie.title}</h3>
-              <p className="find-meta">
-                {movie.releaseDate ? `Release: ${movie.releaseDate}` : 'Release date unavailable'}
-                {' • '}
-                {typeof movie.rating === 'number' ? `Rating: ${movie.rating.toFixed(1)}/10` : 'Rating unavailable'}
-              </p>
-              <p className="find-overview">{movie.overview || 'No overview available for this movie.'}</p>
-              <button
-                type="button"
-                className="add-result-button"
-                onClick={() => onAddToStreamList(movie)}
-                disabled={alreadyAdded}
-              >
-                {alreadyAdded ? 'Added' : 'Add to StreamList'}
-              </button>
+              <div className="find-details">
+                <h3>{movie.title}</h3>
+                <p className="find-meta">
+                  {movie.releaseDate ? `Release: ${movie.releaseDate}` : 'Release date unavailable'}
+                  {' • '}
+                  {typeof movie.rating === 'number' ? `Rating: ${movie.rating.toFixed(1)}/10` : 'Rating unavailable'}
+                </p>
+                <p className="find-overview">{movie.overview || 'No overview available for this movie.'}</p>
+                <button
+                  type="button"
+                  className="add-result-button"
+                  onClick={() => onAddToStreamList(movie)}
+                  disabled={alreadyAdded}
+                >
+                  {alreadyAdded ? 'Added' : 'Add to StreamList'}
+                </button>
+              </div>
+              <div className="find-poster-wrap">
+                {movie.posterUrl ? (
+                  <img
+                    src={movie.posterUrl}
+                    alt={`${movie.title} poster`}
+                    className="find-poster"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="find-poster-placeholder">No poster available</div>
+                )}
+              </div>
             </li>
           );
         })}

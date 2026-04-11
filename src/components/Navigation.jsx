@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 
-function Navigation({ currentUser }) {
+function Navigation({ currentUser, cartItemCount }) {
   return (
     <nav className="main-nav">
       <div className="nav-logo">StreamList</div>
@@ -28,6 +28,7 @@ function Navigation({ currentUser }) {
           <NavLink to="/cart" className={({ isActive }) => isActive ? 'active' : ''}>
             <span className="material-symbols-outlined">shopping_cart</span>
             Cart
+            <span className="cart-badge">{cartItemCount}</span>
           </NavLink>
         </li>
         <li>
