@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { updatePasswordRequest } from '../lib/authApi';
 
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:3001';
+const MIN_PASSWORD_LENGTH = 8;
 
 function Profile({ currentUser, onLogout }) {
   const navigate = useNavigate();
@@ -17,35 +18,34 @@ function Profile({ currentUser, onLogout }) {
     setSuccessMessage('');
     setIsSubmitting(true);
 
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      setIsSubmitting(false);
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setError('New password must be different from current password');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`${AUTH_API_URL}/api/auth/update-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: currentUser,
-          currentPassword,
-          newPassword
-        })
+      await updatePasswordRequest({
+        currentPassword,
+        newPassword
       });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        setError(payload.error || 'Password update failed');
-        return;
-      }
-
       setCurrentPassword('');
       setNewPassword('');
       setSuccessMessage('Password updated successfully');
-    } catch {
-      setError('Unable to reach auth server');
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : 'Password update failed');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleLogout = () => {
-    onLogout();
+  const handleLogout = async () => {
+    await onLogout();
     navigate('/login');
   };
 

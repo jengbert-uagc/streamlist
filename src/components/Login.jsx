@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { loginRequest } from '../lib/authApi';
 
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:3001';
+const MIN_PASSWORD_LENGTH = 8;
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
@@ -20,23 +21,24 @@ function Login({ onLogin }) {
     setError('');
     setIsSubmitting(true);
 
+    const normalizedUsername = username.trim();
+    if (!normalizedUsername || !password) {
+      setError('Username and password are required');
+      setIsSubmitting(false);
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`${AUTH_API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password })
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        setError(payload.error || 'Login failed');
-        return;
-      }
-
+      const payload = await loginRequest({ username: normalizedUsername, password });
       onLogin(payload.username);
       navigate(redirectTo, { replace: true });
-    } catch {
-      setError('Unable to reach auth server');
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : 'Login failed');
     } finally {
       setIsSubmitting(false);
     }

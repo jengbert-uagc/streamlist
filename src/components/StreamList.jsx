@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 const TMDB_API_URL = import.meta.env.VITE_TMDB_API_URL || 'https://api.themoviedb.org/3';
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_IMAGE_BASE_URL = import.meta.env.VITE_TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p';
 
 function StreamList({ items, setItems }) {
   const [inputValue, setInputValue] = useState('');
@@ -10,6 +11,10 @@ function StreamList({ items, setItems }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [movieDetailsByTmdbId, setMovieDetailsByTmdbId] = useState({});
+  const [detailErrorsByTmdbId, setDetailErrorsByTmdbId] = useState({});
+  const [loadingTmdbId, setLoadingTmdbId] = useState(null);
 
   React.useEffect(() => {
     const query = inputValue.trim();
@@ -106,6 +111,9 @@ function StreamList({ items, setItems }) {
       setEditingId(null);
       setEditValue('');
     }
+    if (expandedItemId === id) {
+      setExpandedItemId(null);
+    }
   };
 
   const startEdit = (item) => {
@@ -124,11 +132,25 @@ function StreamList({ items, setItems }) {
       return;
     }
 
-    setItems((prevItems) =>
-      prevItems.map((item) =>
+    let didUpdate = false;
+    setItems((prevItems) => {
+      const hasDuplicate = prevItems.some(
+        (item) => item.id !== id && item.text.toLowerCase() === trimmedValue.toLowerCase(),
+      );
+      if (hasDuplicate) {
+        return prevItems;
+      }
+
+      didUpdate = true;
+      return prevItems.map((item) =>
         item.id === id ? { ...item, text: trimmedValue } : item
-      )
-    );
+      );
+    });
+
+    if (!didUpdate) {
+      return;
+    }
+
     setEditingId(null);
     setEditValue('');
   };
@@ -140,13 +162,57 @@ function StreamList({ items, setItems }) {
     setShowSuggestions(false);
   };
 
+  const loadMovieDetails = async (tmdbId) => {
+    if (!TMDB_API_KEY || !tmdbId) {
+      return;
+    }
+    if (movieDetailsByTmdbId[tmdbId] || detailErrorsByTmdbId[tmdbId]) {
+      return;
+    }
+
+    setLoadingTmdbId(tmdbId);
+    try {
+      const response = await fetch(
+        `${TMDB_API_URL}/movie/${tmdbId}?api_key=${encodeURIComponent(TMDB_API_KEY)}`,
+      );
+      if (!response.ok) {
+        throw new Error('TMDB details request failed');
+      }
+      const payload = await response.json();
+      const details = {
+        title: payload.title || '',
+        overview: payload.overview || '',
+        releaseDate: payload.release_date || '',
+        rating: payload.vote_average,
+        posterUrl: payload.poster_path ? `${TMDB_IMAGE_BASE_URL}/w342${payload.poster_path}` : null,
+      };
+      setMovieDetailsByTmdbId((previous) => ({ ...previous, [tmdbId]: details }));
+    } catch {
+      setDetailErrorsByTmdbId((previous) => ({ ...previous, [tmdbId]: 'Unable to load TMDB details right now.' }));
+    } finally {
+      setLoadingTmdbId((previous) => (previous === tmdbId ? null : previous));
+    }
+  };
+
+  const toggleExpanded = async (item) => {
+    if (expandedItemId === item.id) {
+      setExpandedItemId(null);
+      return;
+    }
+
+    setExpandedItemId(item.id);
+    if (item.tmdbId) {
+      await loadMovieDetails(item.tmdbId);
+    }
+  };
+
   const totalItems = items.length;
   const completedItems = items.filter((item) => item.completed).length;
 
   return (
     <div className="page-container">
       <h2>StreamList</h2>
-      <p>Add streaming services, then edit, complete, or remove them below.</p>
+      <p>Add movies to watch, then edit, complete, or remove them below.</p>
       <form onSubmit={handleSubmit} className="input-group">
         <div className="streamlist-input-wrap">
           <input
@@ -197,65 +263,120 @@ function StreamList({ items, setItems }) {
         <ul className="stream-items">
           {items.map((item) => (
             <li key={item.id} className={`stream-item ${item.completed ? 'is-complete' : ''}`}>
-              {editingId === item.id ? (
-                <input
-                  type="text"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  className="edit-input"
-                  aria-label={`Edit ${item.text}`}
-                />
-              ) : (
-                <span className="item-text">{item.text}</span>
-              )}
-
-              <div className="item-actions">
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => toggleComplete(item.id)}
-                  title={item.completed ? 'Mark as incomplete' : 'Mark as complete'}
-                >
-                  <span className="material-symbols-outlined">
-                    {item.completed ? 'undo' : 'check_circle'}
-                  </span>
-                </button>
-
+              <div className="stream-item-main">
                 {editingId === item.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      onClick={() => saveEdit(item.id)}
-                      title="Save"
-                      disabled={!editValue.trim()}
-                    >
-                      <span className="material-symbols-outlined">save</span>
-                    </button>
-                    <button type="button" className="icon-button" onClick={cancelEdit} title="Cancel">
-                      <span className="material-symbols-outlined">close</span>
-                    </button>
-                  </>
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="edit-input"
+                    aria-label={`Edit ${item.text}`}
+                  />
                 ) : (
                   <button
                     type="button"
-                    className="icon-button"
-                    onClick={() => startEdit(item)}
-                    title="Edit"
+                    className="item-title-button"
+                    onClick={() => {
+                      void toggleExpanded(item);
+                    }}
+                    aria-expanded={expandedItemId === item.id}
                   >
-                    <span className="material-symbols-outlined">edit</span>
+                    <span className="item-text">{item.text}</span>
+                    <span className="material-symbols-outlined detail-caret">
+                      {expandedItemId === item.id ? 'expand_less' : 'expand_more'}
+                    </span>
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  className="icon-button danger"
-                  onClick={() => deleteItem(item.id)}
-                  title="Delete"
-                >
-                  <span className="material-symbols-outlined">delete</span>
-                </button>
+                <div className="item-actions">
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() => toggleComplete(item.id)}
+                    title={item.completed ? 'Mark as incomplete' : 'Mark as complete'}
+                  >
+                    <span className="material-symbols-outlined">
+                      {item.completed ? 'undo' : 'check_circle'}
+                    </span>
+                  </button>
+
+                  {editingId === item.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => saveEdit(item.id)}
+                        title="Save"
+                        disabled={!editValue.trim()}
+                      >
+                        <span className="material-symbols-outlined">save</span>
+                      </button>
+                      <button type="button" className="icon-button" onClick={cancelEdit} title="Cancel">
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => startEdit(item)}
+                      title="Edit"
+                    >
+                      <span className="material-symbols-outlined">edit</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="icon-button danger"
+                    onClick={() => deleteItem(item.id)}
+                    title="Delete"
+                  >
+                    <span className="material-symbols-outlined">delete</span>
+                  </button>
+                </div>
               </div>
+
+              {expandedItemId === item.id ? (
+                <div className="stream-item-details">
+                  {!item.tmdbId ? (
+                    <p className="empty-state">No TMDB details available for this entry. Add titles from Find to enable details.</p>
+                  ) : loadingTmdbId === item.tmdbId ? (
+                    <p className="empty-state">Loading details...</p>
+                  ) : detailErrorsByTmdbId[item.tmdbId] ? (
+                    <p className="auth-error">{detailErrorsByTmdbId[item.tmdbId]}</p>
+                  ) : movieDetailsByTmdbId[item.tmdbId] ? (
+                    <div className="stream-detail-card">
+                      <div className="stream-detail-content">
+                        <p className="find-meta">
+                          {movieDetailsByTmdbId[item.tmdbId].releaseDate
+                            ? `Release: ${movieDetailsByTmdbId[item.tmdbId].releaseDate}`
+                            : 'Release date unavailable'}
+                          {' • '}
+                          {typeof movieDetailsByTmdbId[item.tmdbId].rating === 'number'
+                            ? `Rating: ${movieDetailsByTmdbId[item.tmdbId].rating.toFixed(1)}/10`
+                            : 'Rating unavailable'}
+                        </p>
+                        <p className="find-overview">
+                          {movieDetailsByTmdbId[item.tmdbId].overview || 'No overview available for this movie.'}
+                        </p>
+                      </div>
+                      <div className="stream-detail-poster-wrap">
+                        {movieDetailsByTmdbId[item.tmdbId].posterUrl ? (
+                          <img
+                            src={movieDetailsByTmdbId[item.tmdbId].posterUrl}
+                            alt={`${movieDetailsByTmdbId[item.tmdbId].title || item.text} poster`}
+                            className="stream-detail-poster"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="find-poster-placeholder">No poster available</div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
