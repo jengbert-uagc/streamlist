@@ -2,31 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Navigation from './components/Navigation';
 import StreamList from './components/StreamList';
-import Find from './components/Find';
 import Movies from './components/Movies';
 import Cart from './components/Cart';
+import CreditCard from './components/CreditCard';
 import About from './components/About';
 import Login from './components/Login';
 import Profile from './components/Profile';
 import { currentUserRequest, logoutRequest } from './lib/authApi';
 import './App.css';
 
-const ITEMS_STORAGE_KEY = 'streamlist-items';
-const CART_STORAGE_KEY = 'streamlist-cart';
+const ITEMS_STORAGE_KEY_PREFIX = 'streamlist-items';
+const CART_STORAGE_KEY_PREFIX = 'streamlist-cart';
 
-const loadItems = () => {
-  try {
-    const storedItems = localStorage.getItem(ITEMS_STORAGE_KEY);
-    return storedItems ? JSON.parse(storedItems) : [];
-  } catch {
+const getStorageKey = (prefix, username) => `${prefix}:${username}`;
+
+const loadUserCollection = (prefix, username) => {
+  if (!username) {
     return [];
   }
-};
-
-const loadCart = () => {
   try {
-    const storedCart = localStorage.getItem(CART_STORAGE_KEY);
-    return storedCart ? JSON.parse(storedCart) : [];
+    const storedValue = localStorage.getItem(getStorageKey(prefix, username));
+    return storedValue ? JSON.parse(storedValue) : [];
   } catch {
     return [];
   }
@@ -43,7 +39,7 @@ function ProtectedRoute({ currentUser, authResolved, children }) {
   return children;
 }
 
-function LoginRoute({ currentUser, authResolved, onLogin }) {
+function LoginRoute({ currentUser, authResolved }) {
   const location = useLocation();
   if (!authResolved) {
     return <p>Checking session...</p>;
@@ -55,14 +51,14 @@ function LoginRoute({ currentUser, authResolved, onLogin }) {
   if (currentUser) {
     return <Navigate to={redirectTo} replace />;
   }
-  return <Login onLogin={onLogin} />;
+  return <Login />;
 }
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authResolved, setAuthResolved] = useState(false);
-  const [streamItems, setStreamItems] = useState(loadItems);
-  const [cartItems, setCartItems] = useState(loadCart);
+  const [streamItems, setStreamItems] = useState([]);
+  const [cartItems, setCartItems] = useState([]);
 
   useEffect(() => {
     let isActive = true;
@@ -90,16 +86,32 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(ITEMS_STORAGE_KEY, JSON.stringify(streamItems));
-  }, [streamItems]);
+    if (!authResolved) {
+      return;
+    }
+    if (!currentUser) {
+      setStreamItems([]);
+      setCartItems([]);
+      return;
+    }
+
+    setStreamItems(loadUserCollection(ITEMS_STORAGE_KEY_PREFIX, currentUser));
+    setCartItems(loadUserCollection(CART_STORAGE_KEY_PREFIX, currentUser));
+  }, [authResolved, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-  }, [cartItems]);
+    if (!authResolved || !currentUser) {
+      return;
+    }
+    localStorage.setItem(getStorageKey(ITEMS_STORAGE_KEY_PREFIX, currentUser), JSON.stringify(streamItems));
+  }, [authResolved, currentUser, streamItems]);
 
-  const handleLogin = (username) => {
-    setCurrentUser(username);
-  };
+  useEffect(() => {
+    if (!authResolved || !currentUser) {
+      return;
+    }
+    localStorage.setItem(getStorageKey(CART_STORAGE_KEY_PREFIX, currentUser), JSON.stringify(cartItems));
+  }, [authResolved, currentUser, cartItems]);
 
   const handleLogout = async () => {
     try {
@@ -151,9 +163,9 @@ function App() {
         <main className="content">
           <Routes>
             <Route path="/" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><StreamList items={streamItems} setItems={setStreamItems} /></ProtectedRoute>} />
-            <Route path="/find" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Find streamItems={streamItems} onAddToStreamList={handleAddMovieToStreamList} /></ProtectedRoute>} />
-            <Route path="/movie" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Movies /></ProtectedRoute>} />
-            <Route path="/movies" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Movies /></ProtectedRoute>} />
+            <Route path="/find" element={<Navigate to="/movies" replace />} />
+            <Route path="/movie" element={<Navigate to="/movies" replace />} />
+            <Route path="/movies" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Movies streamItems={streamItems} onAddToStreamList={handleAddMovieToStreamList} /></ProtectedRoute>} />
             <Route
               path="/cart"
               element={
@@ -162,10 +174,18 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/about" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><About /></ProtectedRoute>} />
+            <Route
+              path="/credit-card"
+              element={
+                <ProtectedRoute currentUser={currentUser} authResolved={authResolved}>
+                  <CreditCard currentUser={currentUser} />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/about" element={<About />} />
             <Route
               path="/login"
-              element={<LoginRoute currentUser={currentUser} authResolved={authResolved} onLogin={handleLogin} />}
+              element={<LoginRoute currentUser={currentUser} authResolved={authResolved} />}
             />
             <Route path="/profile" element={<ProtectedRoute currentUser={currentUser} authResolved={authResolved}><Profile currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>} />
           </Routes>

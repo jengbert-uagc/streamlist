@@ -4,7 +4,6 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,23 +14,10 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const USERS_FILE_TMP = path.join(DATA_DIR, 'users.tmp.json');
 const PORT = Number(process.env.PORT || 3001);
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const BCRYPT_ROUNDS_RAW = Number(process.env.BCRYPT_ROUNDS || 12);
-const BCRYPT_ROUNDS = Number.isInteger(BCRYPT_ROUNDS_RAW) && BCRYPT_ROUNDS_RAW >= 10 && BCRYPT_ROUNDS_RAW <= 14
-  ? BCRYPT_ROUNDS_RAW
-  : 12;
-const DEFAULT_ADMIN_USERNAME = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
-const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD;
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const BODY_SIZE_LIMIT_BYTES = Number(process.env.BODY_SIZE_LIMIT_BYTES || 10_000);
-const LOGIN_RATE_LIMIT_WINDOW_MS = Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
-const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = Number(process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS || 10);
-const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_PASSWORD_LENGTH = 72;
-const loginAttemptStore = new Map();
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'streamlist_session';
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 7 * 24 * 60 * 60 * 1000);
 const SESSION_SECURE_COOKIES = process.env.SESSION_SECURE_COOKIES
@@ -39,26 +25,23 @@ const SESSION_SECURE_COOKIES = process.env.SESSION_SECURE_COOKIES
   : NODE_ENV === 'production';
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'streamlist_csrf';
 const CSRF_HEADER_NAME = 'x-csrf-token';
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
+
+const GOOGLE_OAUTH_CLIENT_ID = (process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim();
+const GOOGLE_OAUTH_CLIENT_SECRET = (process.env.GOOGLE_OAUTH_CLIENT_SECRET || '').trim();
+const GOOGLE_OAUTH_REDIRECT_URI = (process.env.GOOGLE_OAUTH_REDIRECT_URI || '').trim();
+const GOOGLE_OAUTH_SCOPES = (process.env.GOOGLE_OAUTH_SCOPES || 'openid email profile').trim();
+const OAUTH_STATE_TTL_MS = Number(process.env.OAUTH_STATE_TTL_MS || 10 * 60 * 1000);
+const GOOGLE_OAUTH_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_OAUTH_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+
 const sessionStore = new Map();
+const oauthStateStore = new Map();
 
-const DEFAULT_USERS = [
-  {
-    username: DEFAULT_ADMIN_USERNAME,
-    passwordHash: bcrypt.hashSync('password', BCRYPT_ROUNDS)
-  }
-];
-
-const normalizeUsername = (value) => {
-  return typeof value === 'string' ? value.trim() : '';
-};
-
-const isValidUsername = (username) => {
-  return USERNAME_PATTERN.test(username);
-};
-
-const isValidPasswordLength = (password) => {
-  return typeof password === 'string' && password.length >= MIN_PASSWORD_LENGTH && password.length <= MAX_PASSWORD_LENGTH;
-};
+const createSessionId = () => randomBytes(32).toString('hex');
+const createCsrfToken = () => randomBytes(24).toString('hex');
+const createOauthStateToken = () => randomBytes(24).toString('hex');
 
 const parseCookies = (cookieHeader) => {
   if (!cookieHeader) {
@@ -77,56 +60,6 @@ const parseCookies = (cookieHeader) => {
     }
     return cookies;
   }, {});
-};
-
-const createSessionId = () => randomBytes(32).toString('hex');
-const createCsrfToken = () => randomBytes(24).toString('hex');
-
-const createSession = (username) => {
-  const sessionId = createSessionId();
-  const now = Date.now();
-  const csrfToken = createCsrfToken();
-  sessionStore.set(sessionId, {
-    username,
-    csrfToken,
-    createdAt: now,
-    expiresAt: now + SESSION_TTL_MS
-  });
-  return { sessionId, csrfToken };
-};
-
-const getSessionFromRequest = (req) => {
-  const cookies = parseCookies(req.headers.cookie);
-  const sessionId = cookies[SESSION_COOKIE_NAME];
-  if (!sessionId) {
-    return null;
-  }
-  const session = sessionStore.get(sessionId);
-  if (!session) {
-    return null;
-  }
-  if (Date.now() > session.expiresAt) {
-    sessionStore.delete(sessionId);
-    return null;
-  }
-  sessionStore.set(sessionId, { ...session, expiresAt: Date.now() + SESSION_TTL_MS });
-  return { sessionId, username: session.username, csrfToken: session.csrfToken };
-};
-
-const destroySession = (sessionId) => {
-  if (!sessionId) {
-    return;
-  }
-  sessionStore.delete(sessionId);
-};
-
-const pruneExpiredSessions = () => {
-  const now = Date.now();
-  for (const [sessionId, session] of sessionStore.entries()) {
-    if (session.expiresAt <= now) {
-      sessionStore.delete(sessionId);
-    }
-  }
 };
 
 const serializeCookie = (name, value, options = {}) => {
@@ -185,6 +118,63 @@ const buildClearedCsrfCookie = () => {
   });
 };
 
+const createSession = (username) => {
+  const sessionId = createSessionId();
+  const now = Date.now();
+  const csrfToken = createCsrfToken();
+  sessionStore.set(sessionId, {
+    username,
+    csrfToken,
+    createdAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  });
+  return { sessionId, csrfToken };
+};
+
+const getSessionFromRequest = (req) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionId = cookies[SESSION_COOKIE_NAME];
+  if (!sessionId) {
+    return null;
+  }
+
+  const session = sessionStore.get(sessionId);
+  if (!session) {
+    return null;
+  }
+  if (Date.now() > session.expiresAt) {
+    sessionStore.delete(sessionId);
+    return null;
+  }
+
+  sessionStore.set(sessionId, { ...session, expiresAt: Date.now() + SESSION_TTL_MS });
+  return { sessionId, username: session.username, csrfToken: session.csrfToken };
+};
+
+const destroySession = (sessionId) => {
+  if (sessionId) {
+    sessionStore.delete(sessionId);
+  }
+};
+
+const pruneExpiredSessions = () => {
+  const now = Date.now();
+  for (const [sessionId, session] of sessionStore.entries()) {
+    if (session.expiresAt <= now) {
+      sessionStore.delete(sessionId);
+    }
+  }
+};
+
+const pruneExpiredOauthStates = () => {
+  const now = Date.now();
+  for (const [state, value] of oauthStateStore.entries()) {
+    if (value.expiresAt <= now) {
+      oauthStateStore.delete(state);
+    }
+  }
+};
+
 const safeTokenMatch = (a, b) => {
   if (!a || !b || a.length !== b.length) {
     return false;
@@ -199,6 +189,14 @@ const validateCsrf = (req, session) => {
   }
   return safeTokenMatch(tokenHeader, session.csrfToken);
 };
+
+const getSecurityHeaders = () => ({
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Cross-Origin-Resource-Policy': 'same-site',
+  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
+});
 
 const getRequestOrigin = (req) => req.headers.origin;
 
@@ -219,86 +217,6 @@ const getCorsOriginHeader = (origin) => {
   return isOriginAllowed(origin) ? origin : null;
 };
 
-const getClientIp = (req) => {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string' && forwardedFor.length > 0) {
-    return forwardedFor.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || 'unknown';
-};
-
-const registerLoginAttempt = (ip) => {
-  const now = Date.now();
-  const previousAttempts = loginAttemptStore.get(ip) || [];
-  const recentAttempts = previousAttempts.filter((attemptTime) => now - attemptTime < LOGIN_RATE_LIMIT_WINDOW_MS);
-  recentAttempts.push(now);
-  loginAttemptStore.set(ip, recentAttempts);
-  return recentAttempts.length;
-};
-
-const clearLoginAttempts = (ip) => {
-  loginAttemptStore.delete(ip);
-};
-
-const isRateLimited = (ip) => {
-  const now = Date.now();
-  const attempts = loginAttemptStore.get(ip) || [];
-  const recentAttempts = attempts.filter((attemptTime) => now - attemptTime < LOGIN_RATE_LIMIT_WINDOW_MS);
-  loginAttemptStore.set(ip, recentAttempts);
-  return recentAttempts.length >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS;
-};
-
-const getSecurityHeaders = () => ({
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'no-referrer',
-  'Cross-Origin-Resource-Policy': 'same-site',
-  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
-});
-
-const verifyPassword = async (user, password) => {
-  return typeof user.passwordHash === 'string' && bcrypt.compare(password, user.passwordHash);
-};
-
-const toBcryptUser = async (user, password) => {
-  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  return {
-    username: user.username,
-    passwordHash
-  };
-};
-
-const ensureUsersFile = async () => {
-  await mkdir(DATA_DIR, { recursive: true });
-  try {
-    await readFile(USERS_FILE, 'utf8');
-  } catch {
-    if (NODE_ENV === 'production' && !DEFAULT_ADMIN_PASSWORD) {
-      throw new Error('DEFAULT_ADMIN_PASSWORD is required when initializing users in production');
-    }
-
-    const initialUsers = DEFAULT_ADMIN_PASSWORD
-      ? [{
-        username: DEFAULT_ADMIN_USERNAME,
-        passwordHash: bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, BCRYPT_ROUNDS)
-      }]
-      : DEFAULT_USERS;
-
-    await writeFile(USERS_FILE, JSON.stringify(initialUsers, null, 2), { encoding: 'utf8', mode: 0o600 });
-  }
-};
-
-const getUsers = async () => {
-  const usersJson = await readFile(USERS_FILE, 'utf8');
-  return JSON.parse(usersJson);
-};
-
-const saveUsers = async (users) => {
-  const payload = JSON.stringify(users, null, 2);
-  await writeFile(USERS_FILE_TMP, payload, { encoding: 'utf8', mode: 0o600 });
-  await rename(USERS_FILE_TMP, USERS_FILE);
-};
-
 const sendJson = (req, res, statusCode, payload, options = {}) => {
   const requestOrigin = getRequestOrigin(req);
   const corsOrigin = getCorsOriginHeader(requestOrigin);
@@ -315,9 +233,9 @@ const sendJson = (req, res, statusCode, payload, options = {}) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': corsOrigin || '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-CSRF-Token',
     'Access-Control-Allow-Credentials': 'true',
-    'Vary': 'Origin',
+    Vary: 'Origin',
     ...getSecurityHeaders(),
     ...(options.headers || {})
   };
@@ -330,26 +248,258 @@ const sendJson = (req, res, statusCode, payload, options = {}) => {
   res.end(JSON.stringify(payload));
 };
 
-const getJsonBody = async (req) => {
-  const contentType = req.headers['content-type'] || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    throw new Error('Content-Type must be application/json');
+const getRequestProtocol = (req) => {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  if (typeof forwardedProto === 'string' && forwardedProto.length > 0) {
+    return forwardedProto.split(',')[0].trim();
+  }
+  return NODE_ENV === 'production' ? 'https' : 'http';
+};
+
+const getPublicBaseUrl = (req) => {
+  const configuredBaseUrl = (process.env.PUBLIC_BASE_URL || '').trim();
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/+$/, '');
+  }
+  const host = req.headers.host || 'localhost';
+  return `${getRequestProtocol(req)}://${host}`;
+};
+
+const buildGoogleRedirectUri = (req) => {
+  if (GOOGLE_OAUTH_REDIRECT_URI) {
+    return GOOGLE_OAUTH_REDIRECT_URI;
+  }
+  return `${getPublicBaseUrl(req)}/api/auth/google/callback`;
+};
+
+const isGoogleOAuthConfigured = () => {
+  return GOOGLE_OAUTH_CLIENT_ID.length > 0 && GOOGLE_OAUTH_CLIENT_SECRET.length > 0;
+};
+
+const sanitizePostLoginRedirect = (value) => {
+  if (typeof value !== 'string') {
+    return '/';
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+    return '/';
+  }
+  return trimmed || '/';
+};
+
+const sanitizeAppOrigin = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  try {
+    const parsed = new URL(value.trim());
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return '';
+    }
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
+};
+
+const getAppOriginFromRequest = (req, requestUrl) => {
+  const queryOrigin = sanitizeAppOrigin(requestUrl.searchParams.get('appOrigin'));
+  if (queryOrigin) {
+    return queryOrigin;
   }
 
-  const chunks = [];
-  let bodyBytes = 0;
-  for await (const chunk of req) {
-    bodyBytes += chunk.length;
-    if (bodyBytes > BODY_SIZE_LIMIT_BYTES) {
-      throw new Error('Request payload too large');
+  const originHeader = sanitizeAppOrigin(req.headers.origin);
+  if (originHeader) {
+    return originHeader;
+  }
+
+  const refererHeader = req.headers.referer;
+  if (typeof refererHeader === 'string' && refererHeader.length > 0) {
+    try {
+      const refererUrl = new URL(refererHeader);
+      return sanitizeAppOrigin(`${refererUrl.protocol}//${refererUrl.host}`);
+    } catch {
+      // ignore invalid referrer
     }
-    chunks.push(chunk);
   }
-  const rawBody = Buffer.concat(chunks).toString('utf8');
-  if (!rawBody) {
-    return {};
+
+  return getPublicBaseUrl(req);
+};
+
+const createOauthState = (redirectPath, appOrigin) => {
+  const state = createOauthStateToken();
+  oauthStateStore.set(state, {
+    redirectPath,
+    appOrigin,
+    expiresAt: Date.now() + OAUTH_STATE_TTL_MS
+  });
+  return state;
+};
+
+const consumeOauthState = (state) => {
+  if (!state) {
+    return null;
   }
-  return JSON.parse(rawBody);
+  const entry = oauthStateStore.get(state);
+  oauthStateStore.delete(state);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    return null;
+  }
+  return entry;
+};
+
+const getGoogleUserInfo = async (req, code) => {
+  const tokenResponse = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+      redirect_uri: buildGoogleRedirectUri(req),
+      grant_type: 'authorization_code'
+    })
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error('Google token exchange failed');
+  }
+
+  const tokenPayload = await tokenResponse.json();
+  const accessToken = tokenPayload.access_token;
+  if (typeof accessToken !== 'string' || accessToken.length === 0) {
+    throw new Error('Google access token missing');
+  }
+
+  const userResponse = await fetch(GOOGLE_OAUTH_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  if (!userResponse.ok) {
+    throw new Error('Google user info lookup failed');
+  }
+
+  const userPayload = await userResponse.json();
+  if (typeof userPayload.sub !== 'string' || userPayload.sub.length === 0) {
+    throw new Error('Google subject missing');
+  }
+  if (typeof userPayload.email !== 'string' || userPayload.email.length === 0) {
+    throw new Error('Google email missing');
+  }
+  if (!userPayload.email_verified) {
+    throw new Error('Google email is not verified');
+  }
+
+  return {
+    googleSubject: userPayload.sub,
+    email: userPayload.email.toLowerCase(),
+    displayName: typeof userPayload.name === 'string' ? userPayload.name.trim() : ''
+  };
+};
+
+const isValidUsername = (username) => {
+  return USERNAME_PATTERN.test(username);
+};
+
+const toUsernameBase = (value) => {
+  const source = typeof value === 'string' ? value.toLowerCase() : '';
+  const normalized = source
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/[-_.]{2,}/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '');
+  if (!normalized) {
+    return 'user';
+  }
+  if (normalized.length < 3) {
+    return `${normalized}usr`;
+  }
+  return normalized.slice(0, 32);
+};
+
+const getUniqueUsername = (users, suggestedBase) => {
+  const existing = new Set(users.map((user) => user.username));
+  let base = toUsernameBase(suggestedBase);
+  if (base.length > 32) {
+    base = base.slice(0, 32);
+  }
+  if (!existing.has(base) && isValidUsername(base)) {
+    return base;
+  }
+
+  let suffix = 1;
+  while (suffix < 10000) {
+    const suffixText = String(suffix);
+    const prefix = base.slice(0, Math.max(3, 32 - suffixText.length - 1));
+    const candidate = `${prefix}-${suffixText}`;
+    if (!existing.has(candidate) && isValidUsername(candidate)) {
+      return candidate;
+    }
+    suffix += 1;
+  }
+  return `user-${Date.now()}`.slice(0, 32);
+};
+
+const ensureUsersFile = async () => {
+  await mkdir(DATA_DIR, { recursive: true });
+  try {
+    await readFile(USERS_FILE, 'utf8');
+  } catch {
+    await writeFile(USERS_FILE, JSON.stringify([], null, 2), { encoding: 'utf8', mode: 0o600 });
+  }
+};
+
+const getUsers = async () => {
+  const usersJson = await readFile(USERS_FILE, 'utf8');
+  return JSON.parse(usersJson);
+};
+
+const saveUsers = async (users) => {
+  const payload = JSON.stringify(users, null, 2);
+  await writeFile(USERS_FILE_TMP, payload, { encoding: 'utf8', mode: 0o600 });
+  await rename(USERS_FILE_TMP, USERS_FILE);
+};
+
+const findOrCreateGoogleUser = async (googleIdentity) => {
+  const users = await getUsers();
+  const existingIndex = users.findIndex((user) => user.googleSubject === googleIdentity.googleSubject);
+  if (existingIndex !== -1) {
+    const existingUser = users[existingIndex];
+    if (existingUser.email !== googleIdentity.email || existingUser.displayName !== googleIdentity.displayName) {
+      users[existingIndex] = {
+        ...existingUser,
+        email: googleIdentity.email,
+        displayName: googleIdentity.displayName
+      };
+      await saveUsers(users);
+    }
+    return existingUser.username;
+  }
+
+  const emailLocalPart = googleIdentity.email.split('@')[0];
+  const suggestedBase = emailLocalPart || googleIdentity.displayName || 'google-user';
+  const username = getUniqueUsername(users, suggestedBase);
+  users.push({
+    username,
+    authProvider: 'google',
+    googleSubject: googleIdentity.googleSubject,
+    email: googleIdentity.email,
+    displayName: googleIdentity.displayName
+  });
+  await saveUsers(users);
+  return username;
+};
+
+const redirectToLoginWithError = (res, errorCode, appOrigin = '') => {
+  const base = sanitizeAppOrigin(appOrigin) || '';
+  const location = `${base}/login?oauthError=${encodeURIComponent(errorCode)}`;
+  res.writeHead(302, {
+    Location: location,
+    ...getSecurityHeaders()
+  });
+  res.end();
 };
 
 await ensureUsersFile();
@@ -358,6 +508,7 @@ const server = createServer(async (req, res) => {
   const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const pathname = requestUrl.pathname;
   pruneExpiredSessions();
+  pruneExpiredOauthStates();
 
   if (req.method === 'OPTIONS') {
     sendJson(req, res, 204, {});
@@ -379,6 +530,73 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname === '/api/auth/google/start') {
+    if (!isGoogleOAuthConfigured()) {
+      sendJson(req, res, 503, { error: 'Google OAuth is not configured' });
+      return;
+    }
+
+    const redirectPath = sanitizePostLoginRedirect(requestUrl.searchParams.get('redirect'));
+    const appOrigin = getAppOriginFromRequest(req, requestUrl);
+    const state = createOauthState(redirectPath, appOrigin);
+    const params = new URLSearchParams({
+      client_id: GOOGLE_OAUTH_CLIENT_ID,
+      redirect_uri: buildGoogleRedirectUri(req),
+      response_type: 'code',
+      scope: GOOGLE_OAUTH_SCOPES,
+      state,
+      include_granted_scopes: 'true',
+      access_type: 'online',
+      prompt: 'select_account'
+    });
+
+    res.writeHead(302, {
+      Location: `${GOOGLE_OAUTH_AUTHORIZE_URL}?${params.toString()}`,
+      ...getSecurityHeaders()
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/auth/google/callback') {
+    if (!isGoogleOAuthConfigured()) {
+      redirectToLoginWithError(res, 'not_configured', getPublicBaseUrl(req));
+      return;
+    }
+
+    const code = requestUrl.searchParams.get('code');
+    const state = requestUrl.searchParams.get('state');
+    if (!code || !state) {
+      redirectToLoginWithError(res, 'missing_code_or_state');
+      return;
+    }
+
+    const stateEntry = consumeOauthState(state);
+    if (!stateEntry) {
+      redirectToLoginWithError(res, 'invalid_state');
+      return;
+    }
+
+    try {
+      const googleIdentity = await getGoogleUserInfo(req, code);
+      const username = await findOrCreateGoogleUser(googleIdentity);
+      const { sessionId, csrfToken } = createSession(username);
+      const redirectBase = sanitizeAppOrigin(stateEntry.appOrigin) || getPublicBaseUrl(req);
+
+      res.writeHead(302, {
+        Location: `${redirectBase}${stateEntry.redirectPath}`,
+        'Set-Cookie': [buildSessionCookie(sessionId), buildCsrfCookie(csrfToken)],
+        ...getSecurityHeaders()
+      });
+      res.end();
+      return;
+    } catch (error) {
+      console.error('Google OAuth callback failed:', error);
+      redirectToLoginWithError(res, 'google_auth_failed', stateEntry.appOrigin);
+      return;
+    }
+  }
+
   if (req.method === 'POST' && pathname === '/api/auth/logout') {
     const session = getSessionFromRequest(req);
     if (session && !validateCsrf(req, session)) {
@@ -392,114 +610,6 @@ const server = createServer(async (req, res) => {
       headers: { 'Set-Cookie': [buildClearedSessionCookie(), buildClearedCsrfCookie()] }
     });
     return;
-  }
-
-  if (req.method === 'POST' && pathname === '/api/auth/login') {
-    try {
-      const clientIp = getClientIp(req);
-      if (isRateLimited(clientIp)) {
-        sendJson(req, res, 429, { error: 'Too many login attempts. Try again later.' });
-        return;
-      }
-
-      const { username, password } = await getJsonBody(req);
-      const normalizedUsername = normalizeUsername(username);
-      if (!normalizedUsername || !password) {
-        registerLoginAttempt(clientIp);
-        sendJson(req, res, 400, { error: 'Username and password are required' });
-        return;
-      }
-      if (!isValidUsername(normalizedUsername)) {
-        registerLoginAttempt(clientIp);
-        sendJson(req, res, 400, { error: 'Username format is invalid' });
-        return;
-      }
-      if (!isValidPasswordLength(password)) {
-        registerLoginAttempt(clientIp);
-        sendJson(req, res, 400, { error: `Password must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
-        return;
-      }
-
-      const users = await getUsers();
-      const user = users.find((storedUser) => storedUser.username === normalizedUsername);
-      if (!user) {
-        registerLoginAttempt(clientIp);
-        sendJson(req, res, 401, { error: 'Invalid username or password' });
-        return;
-      }
-
-      const isValidPassword = await verifyPassword(user, password);
-      if (!isValidPassword) {
-        registerLoginAttempt(clientIp);
-        sendJson(req, res, 401, { error: 'Invalid username or password' });
-        return;
-      }
-
-      clearLoginAttempts(clientIp);
-      const { sessionId, csrfToken } = createSession(user.username);
-      sendJson(
-        req,
-        res,
-        200,
-        { username: user.username, csrfToken },
-        { headers: { 'Set-Cookie': [buildSessionCookie(sessionId), buildCsrfCookie(csrfToken)] } }
-      );
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid request payload';
-      sendJson(req, res, 400, { error: message });
-      return;
-    }
-  }
-
-  if (req.method === 'POST' && pathname === '/api/auth/update-password') {
-    try {
-      const session = getSessionFromRequest(req);
-      if (!session) {
-        sendJson(req, res, 401, { error: 'Not authenticated' });
-        return;
-      }
-      if (!validateCsrf(req, session)) {
-        sendJson(req, res, 403, { error: 'Invalid CSRF token' });
-        return;
-      }
-
-      const { currentPassword, newPassword } = await getJsonBody(req);
-      if (!currentPassword || !newPassword) {
-        sendJson(req, res, 400, { error: 'Current password and new password are required' });
-        return;
-      }
-      if (!isValidPasswordLength(newPassword)) {
-        sendJson(req, res, 400, { error: `New password must be ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters` });
-        return;
-      }
-      if (currentPassword === newPassword) {
-        sendJson(req, res, 400, { error: 'New password must be different from current password' });
-        return;
-      }
-
-      const users = await getUsers();
-      const userIndex = users.findIndex((storedUser) => storedUser.username === session.username);
-      if (userIndex === -1) {
-        sendJson(req, res, 404, { error: 'User not found' });
-        return;
-      }
-
-      const isValidCurrentPassword = await verifyPassword(users[userIndex], currentPassword);
-      if (!isValidCurrentPassword) {
-        sendJson(req, res, 401, { error: 'Current password is incorrect' });
-        return;
-      }
-
-      users[userIndex] = await toBcryptUser(users[userIndex], newPassword);
-      await saveUsers(users);
-      sendJson(req, res, 200, { success: true });
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid request payload';
-      sendJson(req, res, 400, { error: message });
-      return;
-    }
   }
 
   sendJson(req, res, 404, { error: 'Not found' });

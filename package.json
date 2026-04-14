@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.js",
+    "server": "node --env-file=.env server/index.js",
     "dev:full": "node scripts/dev-full.js",
     "build": "vite build",
     "test": "node --test",

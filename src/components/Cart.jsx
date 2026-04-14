@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import catalog from '../data.js';
 
 const hasSubscriptionInCart = (cartItems) => cartItems.some((item) => item.type === 'subscription');
 
 function Cart({ cartItems, setCartItems }) {
+  const navigate = useNavigate();
   const [warning, setWarning] = useState('');
 
   const handleAddToCart = (product) => {
@@ -112,6 +114,16 @@ function Cart({ cartItems, setCartItems }) {
             <div className="cart-summary">
               <p>Items: {totalItems}</p>
               <p>Total: ${totalPrice.toFixed(2)}</p>
+            </div>
+            <div className="checkout-actions">
+              <button
+                type="button"
+                className="add-button"
+                onClick={() => navigate('/credit-card')}
+                disabled={cartItems.length === 0}
+              >
+                Checkout
+              </button>
             </div>
           </>
         )}
