@@ -2,5 +2,12 @@
   {
     "username": "admin",
     "passwordHash": "$2b$12$sPZN8Jts2N3JhI.Tw3GtvuvMXr.poGMmxYIcZhcGUGNG2cbbO3mQG"
+  },
+  {
+    "username": "jengbert",
+    "authProvider": "google",
+    "googleSubject": "103823472048966958616",
+    "email": "jengbert@gmail.com",
+    "displayName": "Joe Engbert"
   }
 ]

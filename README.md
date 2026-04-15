@@ -1,10 +1,11 @@
 # StreamList
 
-StreamList is a React + Vite movie tracker with TMDB search, an inline watchlist workflow, and a class-scope auth server (Node HTTP + bcrypt + cookie sessions + CSRF protection).
+StreamList is a React + Vite movie tracker with TMDB search, an inline watchlist workflow, and a class-scope auth server (Node HTTP + Google OAuth2 + cookie sessions + CSRF protection).
 
 ## What This Project Includes
 
 - Session-based authentication with server-managed cookies.
+- Google OAuth2 login flow (authorization code + callback).
 - CSRF protection for authenticated POST actions.
 - StreamList CRUD (add, edit, complete, delete) with duplicate prevention.
 - TMDB movie search with autocomplete and poster-backed results.
@@ -66,35 +67,35 @@ VITE_TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p
 VITE_AUTH_API_URL=
 PORT=3001
 NODE_ENV=development
-BCRYPT_ROUNDS=12
 CORS_ORIGINS=http://localhost:5173
-DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=change-me-in-production
-BODY_SIZE_LIMIT_BYTES=10000
-LOGIN_RATE_LIMIT_WINDOW_MS=900000
-LOGIN_RATE_LIMIT_MAX_ATTEMPTS=10
 SESSION_COOKIE_NAME=streamlist_session
 SESSION_TTL_MS=604800000
 SESSION_SECURE_COOKIES=false
 CSRF_COOKIE_NAME=streamlist_csrf
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=
+GOOGLE_OAUTH_SCOPES=openid email profile
+PUBLIC_BASE_URL=
+OAUTH_STATE_TTL_MS=600000
 ```
 
 ### Notes
 
 - Leave `VITE_AUTH_API_URL` empty for same-origin `/api` calls (recommended with reverse proxy).
 - Set `SESSION_SECURE_COOKIES=true` in production (HTTPS only).
-- In production with fresh user storage, `DEFAULT_ADMIN_PASSWORD` must be set.
+- Google OAuth2 requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`.
+- `GOOGLE_OAUTH_REDIRECT_URI` should match your Google Cloud OAuth redirect URI exactly in production.
 
 ## Authentication And Security Model
 
 ### Session Flow
 
-1. `POST /api/auth/login` validates credentials and sets:
-   - HTTP-only session cookie.
-   - CSRF cookie.
-2. Frontend calls `GET /api/auth/me` on load to hydrate auth state.
-3. Protected routes render only after auth check resolves.
-4. `POST /api/auth/logout` clears cookies and server session.
+1. Browser goes to `GET /api/auth/google/start` and is redirected to Google.
+2. Google returns to `GET /api/auth/google/callback`.
+3. Server creates a session, sets HTTP-only session cookie + CSRF cookie, and redirects to the app.
+4. Frontend calls `GET /api/auth/me` on load to hydrate auth state.
+5. `POST /api/auth/logout` clears cookies and server session.
 
 ### CSRF Protection
 
@@ -105,9 +106,6 @@ CSRF_COOKIE_NAME=streamlist_csrf
 ### Other Backend Safeguards
 
 - Configurable CORS allowlist.
-- Login rate limiting by client IP (in-memory).
-- Request JSON-only parsing with body size limits.
-- Username/password format and length validation.
 - Atomic writes to `users.json` via temp file + rename.
 - Basic secure headers (`X-Frame-Options`, `Referrer-Policy`, etc.).
 
@@ -117,16 +115,14 @@ Base URL: `http://localhost:3001` (or proxied `/api`).
 
 - `GET /health`
   - Response `200`: `{ status: "ok", uptimeSeconds: number }`
-- `POST /api/auth/login`
-  - Body: `{ username, password }`
-  - Success `200`: `{ username, csrfToken }` + sets cookies
 - `GET /api/auth/me`
   - Success `200`: `{ username, csrfToken }`
   - Failure `401`: `{ error: "Not authenticated" }`
-- `POST /api/auth/update-password`
-  - Requires valid session + `X-CSRF-Token`
-  - Body: `{ currentPassword, newPassword }`
-  - Success `200`: `{ success: true }`
+- `GET /api/auth/google/start`
+  - Redirects browser to Google OAuth consent screen.
+  - Optional query: `redirect` (relative path to send user after successful login).
+- `GET /api/auth/google/callback`
+  - Handles Google OAuth callback, creates/loads account, sets session cookies, then redirects to app.
 - `POST /api/auth/logout`
   - Requires valid session + `X-CSRF-Token`
   - Success `200`: `{ success: true }` + clears cookies
@@ -136,16 +132,18 @@ Base URL: `http://localhost:3001` (or proxied `/api`).
 ### Login/Profile
 
 - Login authenticates against backend and establishes session.
-- Profile supports password updates and logout.
+- Login uses Google OAuth2 only.
+- Profile supports logout.
 
 ### StreamList
 
-- Add entries manually or from Find results.
+- Add entries manually or from Movies results.
+- Add entries manually or from Movies search results.
 - Prevents duplicate entries (case-insensitive).
 - Item row supports complete/edit/delete.
 - Clicking a movie title toggles TMDB detail panel (overview, release date, rating, poster) when a `tmdbId` exists.
 
-### Find
+### Movies
 
 - TMDB search with autocomplete.
 - Poster-backed result cards.
@@ -178,9 +176,9 @@ npm run test
 Current integration tests verify:
 
 - Unauthenticated access rejection (`/api/auth/me`).
-- Login session bootstrap and CSRF token issuance.
-- CSRF enforcement for update-password and logout.
-- Successful password update/logout with valid CSRF.
+- Password login endpoint is disabled.
+- Google start endpoint returns configuration error when missing OAuth secrets.
+- Logout works without an active session.
 
 ## Deployment Notes
 
@@ -189,12 +187,13 @@ Current integration tests verify:
   - `NODE_ENV=production`
   - `SESSION_SECURE_COOKIES=true`
   - `CORS_ORIGINS` to your exact frontend origin(s)
-  - `DEFAULT_ADMIN_PASSWORD` for initial bootstrap when user file is empty
+  - `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_REDIRECT_URI` matching Google Console redirect URI
 - Prefer proxying frontend and backend behind one domain and route `/api` to backend.
 
 ## Known Scope Limits (Intentional For Class Project)
 
-- Sessions and rate limits are in-memory (reset on server restart).
+- Sessions are in-memory (reset on server restart).
 - User storage is file-based (`users.json`) instead of a database.
 - No roles/permissions model.
 
